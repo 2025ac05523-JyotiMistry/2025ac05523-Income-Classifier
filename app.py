@@ -1,484 +1,436 @@
+# Income Classification App
+# Streamlit Application for ML Assignment 2
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import (accuracy_score, roc_auc_score, precision_score, 
+                            recall_score, f1_score, matthews_corrcoef,
+                            confusion_matrix, roc_curve)
 import os
-import plotly.express as px
-import plotly.graph_objects as go
-from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, recall_score, f1_score, matthews_corrcoef, confusion_matrix, classification_report
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
 
-# Page configuration
+# Set page configuration
 st.set_page_config(
-    page_title="Income Classification App",
+    page_title="Income Classifier",
     page_icon="💰",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS for better UI
 st.markdown("""
-<style>
+    <style>
     .main-header {
-        font-size: 2.5rem;
-        color: #4CAF50;
+        font-size: 3rem;
+        color: #2E86AB;
         text-align: center;
-        margin-bottom: 0.5rem;
+        margin-bottom: 1rem;
     }
     .sub-header {
-        font-size: 1.1rem;
-        color: #666;
-        text-align: center;
-        margin-bottom: 2rem;
+        font-size: 1.5rem;
+        color: #A23B72;
+        margin-bottom: 1rem;
     }
-    .stButton > button {
+    .metric-box {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 0.5rem 0;
+    }
+    .stButton>button {
         width: 100%;
-        background-color: #4CAF50;
+        background-color: #2E86AB;
         color: white;
         font-weight: bold;
     }
-    .stButton > button:hover {
-        background-color: #45a049;
+    .stButton>button:hover {
+        background-color: #A23B72;
+        color: white;
     }
-    .metric-card {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
-    }
-</style>
+    </style>
 """, unsafe_allow_html=True)
 
-# Title
-st.markdown('<div class="main-header">💰 Income Classification App</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Predict whether income exceeds $50K/year using Machine Learning</div>', unsafe_allow_html=True)
+# 1. Title and Description
+# App title and description
+st.markdown('<p class="main-header">💰 Income Classifier</p>', unsafe_allow_html=True)
 
-# Sidebar
-st.sidebar.title("Navigation")
-option = st.sidebar.radio("Select Section", ["📊 Dataset Upload", "🤖 Model Selection & Prediction", "📈 Model Performance"])
+st.markdown("""
+This application uses machine learning models to predict whether an individual's 
+annual income exceeds $50,000 based on demographic and employment-related features.
 
-# Define column lists (same as in training)
-CATEGORICAL_COLS = ['workclass', 'education', 'marital.status', 'occupation', 
-                    'relationship', 'race', 'sex', 'native.country']
-NUMERICAL_COLS = ['age', 'fnlwgt', 'education.num', 'capital.gain', 
-                  'capital.loss', 'hours.per.week']
+**Dataset**: Adult Census Income Dataset (UCI)
+""")
 
-# Load preprocessor
-@st.cache_resource
-def load_preprocessor():
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', Pipeline([
-                ('imputer', SimpleImputer(strategy='median')),
-                ('scaler', StandardScaler())
-            ]), NUMERICAL_COLS),
-            ('cat', Pipeline([
-                ('imputer', SimpleImputer(strategy='most_frequent')),
-                ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
-            ]), CATEGORICAL_COLS)
-        ])
-    return preprocessor
+# 2. Helper Functions
 
-# Load models
+# Function to load models
 @st.cache_resource
 def load_models():
+    """
+    Load all trained models and preprocessor from .pkl files
+    """
     models = {}
-    model_files = {
-        'Logistic Regression': 'models/Logistic_Regression.pkl',
-        'Decision Tree': 'models/Decision_Tree.pkl',
-        'KNN': 'models/KNN.pkl',
-        'Naive Bayes': 'models/Naive_Bayes.pkl',
-        'Random Forest': 'models/Random_Forest.pkl'
+    model_paths = {
+        'Logistic Regression': 'models/model_logistic_regression.pkl',
+        'Decision Tree': 'models/model_decision_tree.pkl',
+        'KNN': 'models/model_knn.pkl',
+        'Naive Bayes': 'models/model_naive_bayes.pkl',
+        'Random Forest': 'models/model_random_forest.pkl'
     }
     
-    for name, path in model_files.items():
-        if os.path.exists(path):
-            try:
-                with open(path, 'rb') as f:
-                    models[name] = pickle.load(f)
-            except Exception as e:
-                st.warning(f"Could not load {name}: {str(e)}")
-    return models
-
-# Preprocess data function
-def preprocess_data(data, preprocessor):
-    X = data.copy()
-    # Select only the columns we need
-    available_cols = [col for col in CATEGORICAL_COLS + NUMERICAL_COLS if col in X.columns]
-    X = X[available_cols]
+    # Check if models directory exists
+    if not os.path.exists('models'):
+        st.error("❌ Models directory not found! Please ensure the models folder exists.")
+        return None, None
     
-    # Handle missing values in input data
-    for col in X.columns:
-        if X[col].dtype == 'object':
-            X[col] = X[col].fillna('Unknown')
-        else:
-            X[col] = X[col].fillna(0)
-    
-    # Preprocess
-    X_processed = preprocessor.fit_transform(X)
-    return X_processed, X
-
-# Make predictions
-def make_prediction(model, data, preprocessor):
-    try:
-        X_processed, X_clean = preprocess_data(data, preprocessor)
-        predictions = model.predict(X_processed)
-        probabilities = model.predict_proba(X_processed)[:, 1] if hasattr(model, 'predict_proba') else None
-        return predictions, probabilities, X_clean
-    except Exception as e:
-        st.error(f"❌ Error in prediction: {str(e)}")
-        return None, None, None
-
-# ============================================================================
-# SECTION 1: DATASET UPLOAD OPTION (CSV) - Requirement (a)
-# ============================================================================
-if option == "📊 Dataset Upload":
-    st.header("📊 Upload Test Data")
-    st.markdown("""
-    **Upload your test CSV file to evaluate the models.**  
-    The dataset should have the same features as the training data.
-    """)
-    
-    # Show expected columns
-    with st.expander("📋 Expected Columns"):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Categorical Columns:**")
-            st.write(CATEGORICAL_COLS)
-        with col2:
-            st.write("**Numerical Columns:**")
-            st.write(NUMERICAL_COLS)
-    
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-    
-    if uploaded_file is not None:
+    # Load each model
+    for model_name, model_path in model_paths.items():
         try:
-            test_data = pd.read_csv(uploaded_file)
-            st.success(f"✅ Data uploaded successfully! Shape: {test_data.shape}")
+            with open(model_path, 'rb') as file:
+                models[model_name] = pickle.load(file)
+        except FileNotFoundError:
+            st.error(f"❌ Model file not found: {model_path}")
+            return None, None
+        except Exception as e:
+            st.error(f"❌ Error loading {model_name}: {str(e)}")
+            return None, None
+    
+    # Load preprocessor
+    try:
+        with open('models/preprocessor.pkl', 'rb') as file:
+            preprocessor = pickle.load(file)
+    except FileNotFoundError:
+        st.error("❌ Preprocessor file not found!")
+        return None, None
+    except Exception as e:
+        st.error(f"❌ Error loading preprocessor: {str(e)}")
+        return None, None
+    
+    return models, preprocessor
+
+# Function to make predictions
+def predict_income(model, preprocessor, input_data):
+    """
+    Make predictions using the selected model
+    """
+    try:
+        # Preprocess the input data
+        input_preprocessed = preprocessor.transform(input_data)
+        
+        # Make predictions
+        prediction = model.predict(input_preprocessed)
+        prediction_proba = model.predict_proba(input_preprocessed)[:, 1]
+        
+        return prediction, prediction_proba
+    except Exception as e:
+        st.error(f"❌ Prediction error: {str(e)}")
+        return None, None
+
+# Function to calculate metrics
+def calculate_metrics(y_true, y_pred, y_pred_proba):
+    """
+    Calculate all evaluation metrics
+    """
+    metrics = {
+        'Accuracy': accuracy_score(y_true, y_pred),
+        'Precision': precision_score(y_true, y_pred),
+        'Recall': recall_score(y_true, y_pred),
+        'F1 Score': f1_score(y_true, y_pred),
+        'MCC': matthews_corrcoef(y_true, y_pred)
+    }
+    
+    # Calculate AUC if probability scores are available
+    if y_pred_proba is not None:
+        metrics['AUC'] = roc_auc_score(y_true, y_pred_proba)
+    
+    return metrics
+
+# 3. Load Models
+
+# Load models and preprocessor
+with st.spinner("Loading models..."):
+    models, preprocessor = load_models()
+
+if models is None or preprocessor is None:
+    st.error("❌ Failed to load models. Please check the models directory.")
+    st.stop()
+
+st.success("✅ Models loaded successfully!")
+
+# Display available models
+st.sidebar.header("📊 Model Selection")
+selected_model = st.sidebar.selectbox(
+    "Choose a model",
+    list(models.keys())
+)
+
+st.sidebar.markdown("---")
+st.sidebar.info(
+    "💡 **Tip**: Random Forest generally performs best on this dataset, "
+    "but Logistic Regression is more interpretable."
+)
+
+# 4. Data Upload Section
+st.header("📁 Upload Test Data")
+
+uploaded_file = st.file_uploader(
+    "Upload your test CSV file",
+    type=['csv'],
+    help="Upload a CSV file with the same features as the training data"
+)
+
+# Option to use sample data
+use_sample = st.checkbox("Use sample test data (test_data.csv)")
+
+# 5. Process Uploaded Data
+# Initialize session state for data
+if 'test_data' not in st.session_state:
+    st.session_state.test_data = None
+if 'predictions' not in st.session_state:
+    st.session_state.predictions = None
+
+# Load data
+if uploaded_file is not None:
+    try:
+        test_data = pd.read_csv(uploaded_file)
+        st.session_state.test_data = test_data
+        st.success(f"✅ Data loaded successfully! Shape: {test_data.shape}")
+    except Exception as e:
+        st.error(f"❌ Error loading file: {str(e)}")
+        st.stop()
+elif use_sample:
+    try:
+        test_data = pd.read_csv('test_data.csv')
+        st.session_state.test_data = test_data
+        st.success(f"✅ Sample data loaded successfully! Shape: {test_data.shape}")
+    except FileNotFoundError:
+        st.error("❌ Sample data file (test_data.csv) not found!")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Error loading sample data: {str(e)}")
+        st.stop()
+else:
+    st.info("📤 Please upload a CSV file or use the sample data.")
+    st.stop()
+
+# Display data preview
+with st.expander("📊 View Data Preview"):
+    st.dataframe(test_data.head())
+    st.write(f"**Total rows**: {len(test_data)}")
+    st.write(f"**Total columns**: {len(test_data.columns)}")
+
+# 6. Feature Selection for Prediction
+st.header("🔍 Predict Income")
+
+# Separate features and target (if available)
+if 'income' in test_data.columns:
+    X_test = test_data.drop('income', axis=1)
+    y_test = test_data['income']
+    st.info(f"Target column 'income' found. Will evaluate model performance.")
+else:
+    X_test = test_data
+    y_test = None
+    st.info("No target column found. Will make predictions only.")
+
+# Display feature info
+st.subheader("Features Summary")
+col1, col2 = st.columns(2)
+with col1:
+    st.write(f"**Number of features**: {X_test.shape[1]}")
+with col2:
+    st.write(f"**Feature names**: {', '.join(X_test.columns[:5])}...")
+
+# 7. Make Predictions
+# Prediction button
+if st.button("🚀 Make Predictions"):
+    try:
+        # Get the selected model
+        model = models[selected_model]
+        
+        # Make predictions
+        y_pred, y_pred_proba = predict_income(model, preprocessor, X_test)
+        
+        if y_pred is not None:
+            st.session_state.predictions = {
+                'y_pred': y_pred,
+                'y_pred_proba': y_pred_proba
+            }
             
-            # Store in session state
-            st.session_state['test_data'] = test_data
+            # Display prediction results
+            st.success(f"✅ Predictions made successfully for {len(y_pred)} instances!")
             
-            # Display data preview
-            st.subheader("📋 Data Preview")
-            st.dataframe(test_data.head(10))
-            
-            # Check for required columns
-            required_cols = CATEGORICAL_COLS + NUMERICAL_COLS
-            missing_req = [col for col in required_cols if col not in test_data.columns]
-            if missing_req:
-                st.warning(f"⚠️ Missing required columns: {missing_req[:5]}...")
-            else:
-                st.success("✅ All required columns are present!")
-            
-            # Basic statistics
+            # Show prediction summary
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Number of Rows", test_data.shape[0])
+                st.metric("Total Predictions", len(y_pred))
             with col2:
-                st.metric("Number of Columns", test_data.shape[1])
+                income_high = np.sum(y_pred == 1)
+                st.metric("Predicted >50K", income_high)
             with col3:
-                missing = test_data.isnull().sum().sum()
-                st.metric("Missing Values", missing)
+                income_low = np.sum(y_pred == 0)
+                st.metric("Predicted <=50K", income_low)
             
-            # Show column info
-            with st.expander("📊 Column Information"):
-                col_info = pd.DataFrame({
-                    'Column': test_data.columns,
-                    'Data Type': test_data.dtypes.values,
-                    'Unique Values': [test_data[col].nunique() for col in test_data.columns],
-                    'Missing Values': [test_data[col].isnull().sum() for col in test_data.columns]
-                })
-                st.dataframe(col_info)
-                
-        except Exception as e:
-            st.error(f"❌ Error reading file: {str(e)}")
-
-# ============================================================================
-# SECTION 2: MODEL SELECTION DROPDOWN & PREDICTIONS - Requirements (b) & (d)
-# ============================================================================
-elif option == "🤖 Model Selection & Prediction":
-    st.header("🤖 Model Selection & Prediction")
-    
-    # Check if test data is uploaded
-    if 'test_data' not in st.session_state:
-        st.warning("⚠️ Please upload test data first in the 'Dataset Upload' section")
-        st.info("📌 Go to 'Dataset Upload' section and upload your CSV file.")
-    else:
-        test_data = st.session_state['test_data']
-        st.success(f"✅ Using uploaded data with {test_data.shape[0]} rows and {test_data.shape[1]} columns")
-        
-        # Load models
-        models = load_models()
-        preprocessor = load_preprocessor()
-        
-        if not models:
-            st.error("❌ No models found. Please train models first and save them in the 'models/' folder.")
-            st.info("📌 Make sure your model files are in the 'models/' directory with these names:")
-            st.code("""
-models/
-├── Logistic_Regression.pkl
-├── Decision_Tree.pkl
-├── KNN.pkl
-├── Naive_Bayes.pkl
-└── Random_Forest.pkl
-""")
-        else:
-            # ==================================================================
-            # MODEL SELECTION DROPDOWN - Requirement (b)
-            # ==================================================================
-            selected_model_name = st.selectbox(
-                "Select a Model",
-                list(models.keys()),
-                help="Choose a machine learning model to make predictions"
+            # Display prediction results
+            st.subheader("Prediction Results")
+            results_df = pd.DataFrame({
+                'Instance': range(1, len(y_pred) + 1),
+                'Prediction': ['>50K' if pred == 1 else '<=50K' for pred in y_pred],
+                'Probability (>50K)': y_pred_proba
+            })
+            st.dataframe(results_df)
+            
+            # Download predictions
+            csv = results_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Predictions as CSV",
+                data=csv,
+                file_name="predictions.csv",
+                mime="text/csv"
             )
-            selected_model = models[selected_model_name]
-            
-            st.info(f"📌 Selected Model: **{selected_model_name}**")
-            
-            # Show data preview
-            with st.expander("📋 View Data Preview"):
-                st.dataframe(test_data.head())
-            
-            # ==================================================================
-            # PREDICTIONS & RESULTS - Requirements (c) & (d)
-            # ==================================================================
-            if st.button("🔮 Make Predictions", type="primary"):
-                with st.spinner(f"Making predictions using {selected_model_name}..."):
-                    try:
-                        # Make predictions
-                        y_pred, y_pred_proba, X_clean = make_prediction(selected_model, test_data, preprocessor)
-                        
-                        if y_pred is None:
-                            st.error("❌ Prediction failed. Please check your data format.")
-                        else:
-                            # Store predictions
-                            st.session_state['predictions'] = y_pred
-                            st.session_state['probabilities'] = y_pred_proba
-                            st.session_state['selected_model'] = selected_model_name
-                            
-                            # ==================================================
-                            # DISPLAY EVALUATION METRICS - Requirement (c)
-                            # ==================================================
-                            st.subheader("📊 Evaluation Metrics")
-                            
-                            # Check if actual labels are available
-                            if 'income' in test_data.columns:
-                                try:
-                                    y_true = test_data['income'].map({'<=50K': 0, '>50K': 1})
-                                    
-                                    # Calculate metrics
-                                    accuracy = accuracy_score(y_true, y_pred)
-                                    precision = precision_score(y_true, y_pred)
-                                    recall = recall_score(y_true, y_pred)
-                                    f1 = f1_score(y_true, y_pred)
-                                    mcc = matthews_corrcoef(y_true, y_pred)
-                                    auc = roc_auc_score(y_true, y_pred_proba) if y_pred_proba is not None else None
-                                    
-                                    # Display metrics in columns
-                                    col1, col2, col3 = st.columns(3)
-                                    with col1:
-                                        st.metric("Accuracy", f"{accuracy:.4f}")
-                                        st.metric("Precision", f"{precision:.4f}")
-                                    with col2:
-                                        st.metric("Recall", f"{recall:.4f}")
-                                        st.metric("F1 Score", f"{f1:.4f}")
-                                    with col3:
-                                        st.metric("AUC", f"{auc:.4f}" if auc else "N/A")
-                                        st.metric("MCC", f"{mcc:.4f}")
-                                    
-                                    # ==========================================
-                                    # CONFUSION MATRIX - Requirement (d)
-                                    # ==========================================
-                                    st.subheader("📊 Confusion Matrix")
-                                    
-                                    cm = confusion_matrix(y_true, y_pred)
-                                    
-                                    fig_cm = px.imshow(
-                                        cm,
-                                        text_auto=True,
-                                        x=['Predicted <=50K', 'Predicted >50K'],
-                                        y=['Actual <=50K', 'Actual >50K'],
-                                        color_continuous_scale='Blues',
-                                        title=f"Confusion Matrix - {selected_model_name}"
-                                    )
-                                    fig_cm.update_layout(height=400)
-                                    st.plotly_chart(fig_cm, use_container_width=True)
-                                    
-                                    # Classification Report
-                                    with st.expander("📋 Detailed Classification Report"):
-                                        report = classification_report(y_true, y_pred, target_names=['<=50K', '>50K'])
-                                        st.text(report)
-                                    
-                                except Exception as e:
-                                    st.warning(f"⚠️ Could not calculate metrics: {str(e)}")
-                                    st.info("💡 Showing predictions without evaluation metrics (actual labels not available)")
-                                    
-                                    # Show predictions summary even without metrics
-                                    col1, col2, col3 = st.columns(3)
-                                    pred_counts = pd.Series(y_pred).value_counts()
-                                    with col1:
-                                        st.metric("Total Predictions", len(y_pred))
-                                    with col2:
-                                        st.metric("Predicted <=50K", pred_counts.get(0, 0))
-                                    with col3:
-                                        st.metric("Predicted >50K", pred_counts.get(1, 0))
-                            else:
-                                # No actual labels - show only predictions
-                                st.info("💡 Upload a dataset with 'income' column to see evaluation metrics and confusion matrix.")
-                                
-                                # Show predictions summary
-                                col1, col2, col3 = st.columns(3)
-                                pred_counts = pd.Series(y_pred).value_counts()
-                                with col1:
-                                    st.metric("Total Predictions", len(y_pred))
-                                with col2:
-                                    st.metric("Predicted <=50K", pred_counts.get(0, 0))
-                                with col3:
-                                    st.metric("Predicted >50K", pred_counts.get(1, 0))
-                            
-                            # Show probability distribution
-                            if y_pred_proba is not None:
-                                st.subheader("📊 Probability Distribution")
-                                fig = px.histogram(
-                                    x=y_pred_proba,
-                                    nbins=50,
-                                    title="Probability Distribution (>50K)",
-                                    labels={'x': 'Probability', 'y': 'Count'},
-                                    color_discrete_sequence=['#4CAF50']
-                                )
-                                fig.update_layout(height=300)
-                                st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Show predictions in table
-                            st.subheader("📋 Prediction Results")
-                            result_df = test_data.copy()
-                            result_df['Prediction'] = y_pred
-                            result_df['Prediction_Label'] = result_df['Prediction'].map({0: '<=50K', 1: '>50K'})
-                            if y_pred_proba is not None:
-                                result_df['Probability_>50K'] = y_pred_proba
-                            
-                            # Select columns to display
-                            display_cols = ['age', 'occupation', 'education', 'Prediction_Label']
-                            if y_pred_proba is not None:
-                                display_cols.append('Probability_>50K')
-                            available_cols = [col for col in display_cols if col in result_df.columns]
-                            
-                            if available_cols:
-                                st.dataframe(result_df[available_cols].head(20))
-                            else:
-                                st.dataframe(result_df.head(20))
-                            
-                            # Download results
-                            csv = result_df.to_csv(index=False)
-                            st.download_button(
-                                label="📥 Download Full Predictions CSV",
-                                data=csv,
-                                file_name=f"predictions_{selected_model_name.replace(' ', '_')}.csv",
-                                mime="text/csv"
-                            )
-                            
-                            st.success("✅ Predictions completed successfully!")
-                            
-                    except Exception as e:
-                        st.error(f"❌ Error making predictions: {str(e)}")
-                        st.info("💡 Try checking your data format. Make sure it has the same columns as the training data.")
-
-# ============================================================================
-# SECTION 3: MODEL PERFORMANCE COMPARISON - Results on test data visible
-# ============================================================================
-else:
-    st.header("📈 Model Performance Comparison")
-    st.markdown("**Results of different models on your test data**")
-    
-    # Results from your notebook
-    try:
-        results_df = pd.DataFrame([
-            {'Model': 'Logistic Regression', 'Accuracy': 0.8543, 'AUC': 0.9136, 'Precision': 0.7502, 'Recall': 0.6218, 'F1': 0.6800, 'MCC': 0.5911},
-            {'Model': 'Decision Tree', 'Accuracy': 0.8158, 'AUC': 0.7537, 'Precision': 0.6302, 'Recall': 0.6298, 'F1': 0.6300, 'MCC': 0.5075},
-            {'Model': 'KNN', 'Accuracy': 0.8341, 'AUC': 0.8672, 'Precision': 0.6832, 'Recall': 0.6218, 'F1': 0.6511, 'MCC': 0.5436},
-            {'Model': 'Naive Bayes', 'Accuracy': 0.6010, 'AUC': 0.8300, 'Precision': 0.3795, 'Recall': 0.9487, 'F1': 0.5421, 'MCC': 0.3876},
-            {'Model': 'Random Forest', 'Accuracy': 0.8556, 'AUC': 0.9114, 'Precision': 0.7467, 'Recall': 0.6358, 'F1': 0.6868, 'MCC': 0.5970}
-        ])
-        
-        # Display metrics table
-        st.subheader("📊 Model Performance Metrics")
-        st.dataframe(
-            results_df.style.background_gradient(subset=['Accuracy', 'AUC', 'Precision', 'Recall', 'F1', 'MCC'], cmap='Blues')
-        )
-        
-        # Visualization - Bar Chart
-        st.subheader("📊 Performance Comparison Charts")
-        metrics = ['Accuracy', 'AUC', 'Precision', 'Recall', 'F1', 'MCC']
-        
-        # Bar chart
-        fig = go.Figure()
-        for metric in metrics:
-            fig.add_trace(go.Bar(
-                name=metric,
-                x=results_df['Model'],
-                y=results_df[metric],
-                text=results_df[metric].round(3),
-                textposition='auto',
-            ))
-        fig.update_layout(
-            title="Model Performance Comparison",
-            xaxis_title="Models",
-            yaxis_title="Score",
-            barmode='group',
-            height=500,
-            template='plotly_white'
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Heatmap
-        heatmap_data = results_df.set_index('Model')[metrics].T
-        fig_heatmap = px.imshow(
-            heatmap_data, 
-            text_auto=True, 
-            color_continuous_scale='Blues',
-            title="Performance Heatmap"
-        )
-        fig_heatmap.update_layout(height=450)
-        st.plotly_chart(fig_heatmap, use_container_width=True)
-        
-        # Observations
-        st.subheader("📝 Model Performance Observations")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("""
-            **🏆 Best Model: Random Forest**
-            - Highest Accuracy: 85.56%
-            - Highest AUC: 91.14%
-            - Best F1 Score: 68.68%
-            - Best MCC: 59.70%
-            
-            **Why Random Forest performs best:**
-            - Handles non-linear relationships well
-            - Robust to overfitting
-            - Handles both numerical and categorical features effectively
-            - Ensemble method captures complex patterns
-            """)
-        
-        with col2:
-            st.markdown("""
-            **📊 Model Observations:**
-            - **Logistic Regression**: Strong performer, excellent AUC (91.36%), most interpretable
-            - **Decision Tree**: Good but lowest AUC, prone to overfitting
-            - **KNN**: Reasonable performance but sensitive to scaling
-            - **Naive Bayes**: Highest recall (94.87%) but poor precision (37.95%)
-            - **Random Forest**: Best overall performance
-            
-            **Overall Winner: Random Forest** 🏆
-            """)
-            
     except Exception as e:
-        st.warning(f"⚠️ Could not load performance data. Error: {str(e)}")
+        st.error(f"❌ Error making predictions: {str(e)}")
 
-# Footer
+# 8. Model Evaluation 
+# Evaluate model performance if ground truth is available
+if y_test is not None and st.session_state.predictions is not None:
+    st.header("📊 Model Performance Evaluation")
+    
+    y_pred = st.session_state.predictions['y_pred']
+    y_pred_proba = st.session_state.predictions['y_pred_proba']
+    
+    # Calculate metrics
+    metrics = calculate_metrics(y_test, y_pred, y_pred_proba)
+    
+    # Display metrics in columns
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Accuracy", f"{metrics['Accuracy']:.4f}")
+        st.metric("Precision", f"{metrics['Precision']:.4f}")
+    with col2:
+        st.metric("Recall", f"{metrics['Recall']:.4f}")
+        st.metric("F1 Score", f"{metrics['F1 Score']:.4f}")
+    with col3:
+        st.metric("MCC", f"{metrics['MCC']:.4f}")
+        if 'AUC' in metrics:
+            st.metric("AUC", f"{metrics['AUC']:.4f}")
+    
+    # Display comparison with table
+    st.subheader("📋 Full Results")
+    
+    # Create results table
+    results_table = pd.DataFrame({
+        'Metric': list(metrics.keys()),
+        'Value': list(metrics.values())
+    })
+    results_table = results_table.round(4)
+    st.table(results_table)
+    
+    # 9. Visualizations
+    # Confusion Matrix
+    st.subheader("Confusion Matrix")
+    
+    cm = confusion_matrix(y_test, y_pred)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
+                xticklabels=['<=50K', '>50K'],
+                yticklabels=['<=50K', '>50K'])
+    ax.set_title(f'Confusion Matrix - {selected_model}')
+    ax.set_xlabel('Predicted')
+    ax.set_ylabel('Actual')
+    st.pyplot(fig)
+    plt.close()
+    
+    # ROC Curve
+    if y_pred_proba is not None:
+        st.subheader("ROC Curve")
+        fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+        auc_score = metrics.get('AUC', 0)
+        
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.plot(fpr, tpr, label=f'{selected_model} (AUC = {auc_score:.3f})')
+        ax.plot([0, 1], [0, 1], 'k--', label='Random Classifier')
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_title(f'ROC Curve - {selected_model}')
+        ax.legend()
+        ax.grid(alpha=0.3)
+        st.pyplot(fig)
+        plt.close()
+
+# Display comparison with all models if ground truth is available
+if y_test is not None and st.session_state.predictions is not None:
+    st.header("📊 Model Comparison")
+    
+    if st.button("Compare All Models"):
+        all_metrics = []
+        
+        for model_name, model in models.items():
+            try:
+                # Make predictions
+                y_pred_all, y_pred_proba_all = predict_income(model, preprocessor, X_test)
+                
+                if y_pred_all is not None:
+                    # Calculate metrics
+                    metrics_all = calculate_metrics(y_test, y_pred_all, y_pred_proba_all)
+                    metrics_all['Model'] = model_name
+                    all_metrics.append(metrics_all)
+            except:
+                continue
+        
+        if all_metrics:
+            # Create comparison dataframe
+            comparison_df = pd.DataFrame(all_metrics)
+            comparison_df = comparison_df.round(4)
+            
+            # Display comparison table
+            st.subheader("Comparison Table")
+            st.dataframe(comparison_df)
+            
+            # Visualize comparison
+            st.subheader("Visual Comparison")
+            
+            # Select metrics to plot
+            metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1 Score', 'MCC']
+            if 'AUC' in comparison_df.columns:
+                metrics_to_plot.append('AUC')
+            
+            # Create bar chart
+            fig, ax = plt.subplots(figsize=(12, 6))
+            comparison_df_melted = comparison_df.melt(id_vars=['Model'], 
+                                                      value_vars=metrics_to_plot,
+                                                      var_name='Metric', 
+                                                      value_name='Score')
+            
+            sns.barplot(data=comparison_df_melted, x='Model', y='Score', hue='Metric', ax=ax)
+            ax.set_title('Model Performance Comparison')
+            ax.set_ylim(0, 1)
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
+            
+            # Identify best model
+            best_model = comparison_df.loc[comparison_df['Accuracy'].idxmax()]
+            st.success(f"🏆 **Best performing model**: {best_model['Model']} with Accuracy = {best_model['Accuracy']:.4f}")
+
+# 11. Footer
 st.markdown("---")
-st.markdown("ML Assignment 2 - BITS Pilani")
+st.markdown(
+    """
+    <div style="text-align: center; color: #666; padding: 1rem;">
+        <p>ML Assignment 2 - Income Classification</p>
+        <p>using Streamlit</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# Display session state info for debugging
+with st.expander("ℹ️ App Information"):
+    st.write(f"**Selected Model**: {selected_model}")
+    st.write(f"**Models Loaded**: {list(models.keys())}")
+    st.write(f"**Data Shape**: {X_test.shape if X_test is not None else 'No data loaded'}")
