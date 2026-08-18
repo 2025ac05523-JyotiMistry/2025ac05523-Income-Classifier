@@ -11,32 +11,12 @@ st.set_page_config(page_title="Income Classifier", layout="wide")
 
 st.title("💰 Income Classifier")
 
-st.markdown("""
-This app predicts whether an individual's income exceeds $50,000 using 5 ML models.
-""")
-
-# Function to fix column names
-def fix_column_names(df):
-    """Fix common column name variations"""
-    mapping = {
-        'education.num': 'education-num',
-        'marital.status': 'marital-status',
-        'capital.gain': 'capital-gain',
-        'capital.loss': 'capital-loss',
-        'hours.per.week': 'hours-per-week',
-        'native.count': 'native-country',
-        'workplace': 'workclass'
-    }
-    df = df.copy()
-    for old, new in mapping.items():
-        if old in df.columns:
-            df = df.rename(columns={old: new})
-    return df
+st.markdown("This app predicts whether an individual's income exceeds $50,000 using 5 ML models.")
 
 @st.cache_resource
 def load_models():
     models = {}
-    model_paths = {
+    model_files = {
         'Logistic Regression': 'models/model_logistic_regression.pkl',
         'Decision Tree': 'models/model_decision_tree.pkl',
         'KNN': 'models/model_knn.pkl',
@@ -44,32 +24,32 @@ def load_models():
         'Random Forest': 'models/model_random_forest.pkl'
     }
     
-    for name, path in model_paths.items():
+    for name, path in model_files.items():
         try:
             with open(path, 'rb') as f:
                 models[name] = pickle.load(f)
+            print(f"Loaded {name}")
+        except FileNotFoundError:
+            st.error(f"❌ File not found: {path}")
+            return None, None
         except Exception as e:
-            st.error(f"Failed to load {name}: {str(e)}")
-            return None, None, None
+            st.error(f"❌ Error loading {name}: {str(e)}")
+            return None, None
     
     try:
         with open('models/preprocessor.pkl', 'rb') as f:
-            preprocessor_data = pickle.load(f)
-            preprocessor = preprocessor_data['preprocessor']
-            expected_columns = preprocessor_data['expected_columns']
+            preprocessor = pickle.load(f)
     except Exception as e:
-        st.error(f"Failed to load preprocessor: {str(e)}")
-        return None, None, None
+        st.error(f"❌ Error loading preprocessor: {str(e)}")
+        return None, None
     
-    return models, preprocessor, expected_columns
+    return models, preprocessor
 
-models, preprocessor, expected_columns = load_models()
+models, preprocessor = load_models()
 
-if models is None or preprocessor is None or expected_columns is None:
+if models is None or preprocessor is None:
     st.error("❌ Failed to load models. Please check the models directory.")
     st.stop()
-
-st.success("✅ Models loaded successfully!")
 
 st.sidebar.header("Model Selection")
 selected_model = st.sidebar.selectbox("Choose a model", list(models.keys()))
@@ -80,51 +60,30 @@ uploaded_file = st.file_uploader("Upload CSV file", type=['csv'])
 if uploaded_file is not None:
     try:
         test_data = pd.read_csv(uploaded_file)
-        st.success(f"Data loaded: {test_data.shape[0]} rows, {test_data.shape[1]} columns")
+        st.success(f"✅ Data loaded: {test_data.shape[0]} rows, {test_data.shape[1]} columns")
         
         st.subheader("Data Preview")
         st.dataframe(test_data.head())
         
-        if st.button("Make Predictions"):
+        if st.button("🚀 Make Predictions"):
             try:
-                # Fix column names first
-                X_test = fix_column_names(test_data)
+                # Prepare features
+                X_test = test_data.copy()
                 
-                # Remove target if exists
+                # Remove target column if exists
                 if 'income' in X_test.columns:
                     y_test = X_test['income']
                     X_test = X_test.drop('income', axis=1)
                 else:
                     y_test = None
                 
-                # Ensure all expected columns exist
-                for col in expected_columns:
-                    if col not in X_test.columns:
-                        if col in ['workclass', 'education', 'marital-status', 'occupation', 
-                                  'relationship', 'race', 'sex', 'native-country']:
-                            X_test[col] = 'Unknown'
-                        else:
-                            X_test[col] = 0
+                # Get the model
+                model = models[selected_model]
                 
-                # Select only expected columns in correct order
-                X_test = X_test[expected_columns]
-                
-                # Convert numeric columns
-                numeric_cols = ['age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week']
-                for col in numeric_cols:
-                    X_test[col] = pd.to_numeric(X_test[col], errors='coerce').fillna(0)
-                
-                # Convert categorical columns to string
-                cat_cols = ['workclass', 'education', 'marital-status', 'occupation', 
-                           'relationship', 'race', 'sex', 'native-country']
-                for col in cat_cols:
-                    X_test[col] = X_test[col].astype(str).replace(' ?', 'Unknown').fillna('Unknown')
-                
-                # Now transform
+                # Transform using preprocessor
                 X_test_processed = preprocessor.transform(X_test)
                 
                 # Make predictions
-                model = models[selected_model]
                 y_pred = model.predict(X_test_processed)
                 y_pred_proba = model.predict_proba(X_test_processed)[:, 1]
                 
@@ -138,7 +97,7 @@ if uploaded_file is not None:
                 
                 # Download predictions
                 csv = results.to_csv(index=False)
-                st.download_button("Download Predictions", csv, "predictions.csv", "text/csv")
+                st.download_button("📥 Download Predictions", csv, "predictions.csv", "text/csv")
                 
                 # If we have actual values, show metrics and confusion matrix
                 if y_test is not None:
@@ -185,13 +144,11 @@ if uploaded_file is not None:
                     plt.close()
                 
             except Exception as e:
-                st.error(f"Prediction error: {str(e)}")
-                st.write("Debug - Data types:", X_test.dtypes)
-                st.write("Debug - Data shape:", X_test.shape)
-                st.write("Debug - Columns:", X_test.columns.tolist())
+                st.error(f"❌ Prediction error: {str(e)}")
+                st.info("Please ensure your CSV has the correct columns: age, workclass, fnlwgt, education, education-num, marital-status, occupation, relationship, race, sex, capital-gain, capital-loss, hours-per-week, native-country")
     
     except Exception as e:
-        st.error(f"Error reading file: {str(e)}")
+        st.error(f"❌ Error reading file: {str(e)}")
 
 st.markdown("---")
 st.caption("ML Assignment 2 - Income Classification")
