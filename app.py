@@ -1,8 +1,3 @@
-# %% [markdown]
-# # Income Classification App
-# ## Streamlit Application for ML Assignment 2
-
-# %%
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -15,7 +10,6 @@ from sklearn.metrics import (accuracy_score, roc_auc_score, precision_score,
 import os
 import re
 
-# Set page configuration
 st.set_page_config(
     page_title="Income Classifier",
     page_icon="💰",
@@ -23,7 +17,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better UI
 st.markdown("""
     <style>
     .main-header {
@@ -56,11 +49,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# %% [markdown]
-# ## 1. Title and Description
-
-# %%
-# App title and description
 st.markdown('<p class="main-header">💰 Income Classifier</p>', unsafe_allow_html=True)
 
 st.markdown("""
@@ -70,16 +58,7 @@ annual income exceeds $50,000 based on demographic and employment-related featur
 **Dataset**: Adult Census Income Dataset (UCI)
 """)
 
-# %% [markdown]
-# ## 2. Helper Functions
-
-# %%
-# Function to fix column names
 def fix_column_names(df):
-    """
-    Fix column names to match the expected format
-    """
-    # Define mapping for common column name variations
     column_mapping = {
         'education.num': 'education-num',
         'education-num': 'education-num',
@@ -93,67 +72,49 @@ def fix_column_names(df):
         'hours-per-week': 'hours-per-week',
         'native.count': 'native-country',
         'native-country': 'native-country',
-        'workplace': 'workclass',  # Fix typo in your data
+        'workplace': 'workclass',
         'workclass': 'workclass'
     }
     
-    # Create a copy to avoid modifying the original
     df_fixed = df.copy()
     
-    # Rename columns
     for old_name, new_name in column_mapping.items():
         if old_name in df_fixed.columns:
             df_fixed = df_fixed.rename(columns={old_name: new_name})
     
     return df_fixed
 
-# Function to validate and prepare data
 def prepare_data(df, expected_columns):
-    """
-    Prepare data for prediction by ensuring all expected columns are present
-    """
-    # Fix column names
     df_fixed = fix_column_names(df)
     
-    # Check for missing columns
     missing_columns = set(expected_columns) - set(df_fixed.columns)
     
     if missing_columns:
         st.warning(f"⚠️ Missing columns: {missing_columns}")
         st.info("Attempting to fix column issues...")
         
-        # Try to find alternative column names
         for col in missing_columns:
-            # Look for similar column names
             for existing_col in df_fixed.columns:
-                # Check if columns are similar (ignoring case, spaces, special characters)
                 if col.replace('-', '').replace('_', '').lower() in existing_col.replace('-', '').replace('_', '').lower():
                     df_fixed = df_fixed.rename(columns={existing_col: col})
                     break
         
-        # If still missing, add placeholder columns with default values
         missing_columns = set(expected_columns) - set(df_fixed.columns)
         if missing_columns:
             st.warning(f"Adding missing columns with default values: {missing_columns}")
             for col in missing_columns:
                 df_fixed[col] = 0
     
-    # Ensure all expected columns are present
     for col in expected_columns:
         if col not in df_fixed.columns:
             df_fixed[col] = 0
     
-    # Select only the expected columns in the correct order
     df_final = df_fixed[expected_columns]
     
     return df_final
 
-# Function to load models
 @st.cache_resource
 def load_models():
-    """
-    Load all trained models and preprocessor from .pkl files
-    """
     models = {}
     model_paths = {
         'Logistic Regression': 'models/model_logistic_regression.pkl',
@@ -163,12 +124,10 @@ def load_models():
         'Random Forest': 'models/model_random_forest.pkl'
     }
     
-    # Check if models directory exists
     if not os.path.exists('models'):
         st.error("❌ Models directory not found! Please ensure the models folder exists.")
         return None, None
     
-    # Load each model
     for model_name, model_path in model_paths.items():
         try:
             with open(model_path, 'rb') as file:
@@ -180,7 +139,6 @@ def load_models():
             st.error(f"❌ Error loading {model_name}: {str(e)}")
             return None, None
     
-    # Load preprocessor
     try:
         with open('models/preprocessor.pkl', 'rb') as file:
             preprocessor = pickle.load(file)
@@ -193,29 +151,17 @@ def load_models():
     
     return models, preprocessor
 
-# Function to make predictions
 def predict_income(model, preprocessor, input_data):
-    """
-    Make predictions using the selected model
-    """
     try:
-        # Preprocess the input data
         input_preprocessed = preprocessor.transform(input_data)
-        
-        # Make predictions
         prediction = model.predict(input_preprocessed)
         prediction_proba = model.predict_proba(input_preprocessed)[:, 1]
-        
         return prediction, prediction_proba
     except Exception as e:
         st.error(f"❌ Prediction error: {str(e)}")
         return None, None
 
-# Function to calculate metrics
 def calculate_metrics(y_true, y_pred, y_pred_proba):
-    """
-    Calculate all evaluation metrics
-    """
     metrics = {
         'Accuracy': accuracy_score(y_true, y_pred),
         'Precision': precision_score(y_true, y_pred),
@@ -224,17 +170,11 @@ def calculate_metrics(y_true, y_pred, y_pred_proba):
         'MCC': matthews_corrcoef(y_true, y_pred)
     }
     
-    # Calculate AUC if probability scores are available
     if y_pred_proba is not None:
         metrics['AUC'] = roc_auc_score(y_true, y_pred_proba)
     
     return metrics
 
-# %% [markdown]
-# ## 3. Load Models
-
-# %%
-# Load models and preprocessor
 with st.spinner("Loading models..."):
     models, preprocessor = load_models()
 
@@ -244,14 +184,12 @@ if models is None or preprocessor is None:
 
 st.success("✅ Models loaded successfully!")
 
-# Get expected feature names
 expected_features = [
     'age', 'workclass', 'fnlwgt', 'education', 'education-num',
     'marital-status', 'occupation', 'relationship', 'race', 'sex',
     'capital-gain', 'capital-loss', 'hours-per-week', 'native-country'
 ]
 
-# Display available models
 st.sidebar.header("📊 Model Selection")
 selected_model = st.sidebar.selectbox(
     "Choose a model",
@@ -264,10 +202,6 @@ st.sidebar.info(
     "but Logistic Regression is more interpretable."
 )
 
-# %% [markdown]
-# ## 4. Data Upload Section
-
-# %%
 st.header("📁 Upload Test Data")
 
 uploaded_file = st.file_uploader(
@@ -276,29 +210,20 @@ uploaded_file = st.file_uploader(
     help="Upload a CSV file with the same features as the training data"
 )
 
-# Option to use sample data
 use_sample = st.checkbox("Use sample test data (test_data.csv)")
 
-# %% [markdown]
-# ## 5. Process Uploaded Data
-
-# %%
-# Initialize session state for data
 if 'test_data' not in st.session_state:
     st.session_state.test_data = None
 if 'predictions' not in st.session_state:
     st.session_state.predictions = None
 
-# Load data
 if uploaded_file is not None:
     try:
         test_data_raw = pd.read_csv(uploaded_file)
-        # Fix column names before storing
         test_data = fix_column_names(test_data_raw)
         st.session_state.test_data = test_data
         st.success(f"✅ Data loaded successfully! Shape: {test_data.shape}")
         
-        # Show column mapping if changes were made
         if list(test_data_raw.columns) != list(test_data.columns):
             st.info("🔄 Column names were automatically fixed:")
             for old, new in zip(test_data_raw.columns, test_data.columns):
@@ -323,26 +248,18 @@ else:
     st.info("📤 Please upload a CSV file or use the sample data.")
     st.stop()
 
-# Display data preview
 with st.expander("📊 View Data Preview"):
     st.dataframe(test_data.head())
     st.write(f"**Total rows:** {len(test_data)}")
     st.write(f"**Total columns:** {len(test_data.columns)}")
     st.write("**Column names:**", ", ".join(test_data.columns))
 
-# %% [markdown]
-# ## 6. Feature Selection for Prediction
-
-# %%
 st.header("🔍 Predict Income")
 
-# Prepare data for prediction
 try:
-    # Prepare the data with the expected columns
     X_test_prepared = prepare_data(test_data, expected_features)
     st.success(f"✅ Data prepared successfully! Shape: {X_test_prepared.shape}")
     
-    # Check if target column exists
     if 'income' in test_data.columns:
         y_test = test_data['income']
         st.info(f"✅ Target column 'income' found. Will evaluate model performance.")
@@ -350,7 +267,6 @@ try:
         y_test = None
         st.info("ℹ️ No target column found. Will make predictions only.")
     
-    # Display feature info
     st.subheader("Features Summary")
     col1, col2 = st.columns(2)
     with col1:
@@ -362,18 +278,23 @@ except Exception as e:
     st.error(f"❌ Error preparing data: {str(e)}")
     st.stop()
 
-# %% [markdown]
-# ## 7. Make Predictions
-
-# %%
-# Prediction button
 if st.button("🚀 Make Predictions"):
     try:
-        # Get the selected model
         model = models[selected_model]
         
-        # Make predictions
-        y_pred, y_pred_proba = predict_income(model, preprocessor, X_test_prepared)
+        X_test_clean = X_test_prepared.copy()
+        
+        for col in X_test_clean.columns:
+            X_test_clean[col] = pd.to_numeric(X_test_clean[col], errors='coerce')
+        
+        X_test_clean = X_test_clean.fillna(0)
+        
+        with st.expander("🔧 Data Types After Cleaning"):
+            st.write(X_test_clean.dtypes)
+            st.write("First 2 rows of cleaned data:")
+            st.dataframe(X_test_clean.head(2))
+        
+        y_pred, y_pred_proba = predict_income(model, preprocessor, X_test_clean)
         
         if y_pred is not None:
             st.session_state.predictions = {
@@ -381,10 +302,8 @@ if st.button("🚀 Make Predictions"):
                 'y_pred_proba': y_pred_proba
             }
             
-            # Display prediction results
             st.success(f"✅ Predictions made successfully for {len(y_pred)} instances!")
             
-            # Show prediction summary
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Total Predictions", len(y_pred))
@@ -395,7 +314,6 @@ if st.button("🚀 Make Predictions"):
                 income_low = np.sum(y_pred == 0)
                 st.metric("Predicted <=50K", income_low)
             
-            # Display prediction results
             st.subheader("Prediction Results")
             results_df = pd.DataFrame({
                 'Instance': range(1, len(y_pred) + 1),
@@ -404,7 +322,6 @@ if st.button("🚀 Make Predictions"):
             })
             st.dataframe(results_df)
             
-            # Download predictions
             csv = results_df.to_csv(index=False)
             st.download_button(
                 label="📥 Download Predictions as CSV",
@@ -413,14 +330,11 @@ if st.button("🚀 Make Predictions"):
                 mime="text/csv"
             )
             
-            # If ground truth available, evaluate performance
             if y_test is not None:
                 st.header("📊 Model Performance Evaluation")
                 
-                # Calculate metrics
                 metrics = calculate_metrics(y_test, y_pred, y_pred_proba)
                 
-                # Display metrics in columns
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Accuracy", f"{metrics['Accuracy']:.4f}")
@@ -433,7 +347,6 @@ if st.button("🚀 Make Predictions"):
                     if 'AUC' in metrics:
                         st.metric("AUC", f"{metrics['AUC']:.4f}")
                 
-                # Confusion Matrix
                 st.subheader("Confusion Matrix")
                 cm = confusion_matrix(y_test, y_pred)
                 fig, ax = plt.subplots(figsize=(8, 6))
@@ -446,7 +359,6 @@ if st.button("🚀 Make Predictions"):
                 st.pyplot(fig)
                 plt.close()
                 
-                # ROC Curve
                 if y_pred_proba is not None:
                     st.subheader("ROC Curve")
                     fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
@@ -464,15 +376,12 @@ if st.button("🚀 Make Predictions"):
                     plt.close()
     except Exception as e:
         st.error(f"❌ Error making predictions: {str(e)}")
-        st.write("Debug information:")
-        st.write(f"Data shape: {X_test_prepared.shape}")
-        st.write(f"Data columns: {X_test_prepared.columns.tolist()}")
+        st.write("🔍 Debug information:")
+        if 'X_test_clean' in locals():
+            st.write(f"Data shape: {X_test_clean.shape}")
+            st.write(f"Data columns: {X_test_clean.columns.tolist()}")
+            st.write(f"Data types:\n{X_test_clean.dtypes}")
 
-# %% [markdown]
-# ## 8. Model Comparison (if available)
-
-# %%
-# Display comparison with all models if ground truth is available
 if y_test is not None and st.session_state.predictions is not None:
     st.header("📊 Model Comparison")
     
@@ -482,11 +391,9 @@ if y_test is not None and st.session_state.predictions is not None:
         with st.spinner("Comparing all models..."):
             for model_name, model in models.items():
                 try:
-                    # Make predictions
-                    y_pred_all, y_pred_proba_all = predict_income(model, preprocessor, X_test_prepared)
+                    y_pred_all, y_pred_proba_all = predict_income(model, preprocessor, X_test_clean)
                     
                     if y_pred_all is not None:
-                        # Calculate metrics
                         metrics_all = calculate_metrics(y_test, y_pred_all, y_pred_proba_all)
                         metrics_all['Model'] = model_name
                         all_metrics.append(metrics_all)
@@ -495,23 +402,18 @@ if y_test is not None and st.session_state.predictions is not None:
                     continue
             
             if all_metrics:
-                # Create comparison dataframe
                 comparison_df = pd.DataFrame(all_metrics)
                 comparison_df = comparison_df.round(4)
                 
-                # Display comparison table
                 st.subheader("Comparison Table")
                 st.dataframe(comparison_df)
                 
-                # Visualize comparison
                 st.subheader("Visual Comparison")
                 
-                # Select metrics to plot
                 metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1 Score', 'MCC']
                 if 'AUC' in comparison_df.columns:
                     metrics_to_plot.append('AUC')
                 
-                # Create bar chart
                 fig, ax = plt.subplots(figsize=(12, 6))
                 comparison_df_melted = comparison_df.melt(id_vars=['Model'], 
                                                           value_vars=metrics_to_plot,
@@ -527,14 +429,9 @@ if y_test is not None and st.session_state.predictions is not None:
                 st.pyplot(fig)
                 plt.close()
                 
-                # Identify best model
                 best_model = comparison_df.loc[comparison_df['Accuracy'].idxmax()]
                 st.success(f"🏆 **Best performing model**: {best_model['Model']} with Accuracy = {best_model['Accuracy']:.4f}")
 
-# %% [markdown]
-# ## 9. Footer
-
-# %%
 st.markdown("---")
 st.markdown(
     """
@@ -546,9 +443,11 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Display session state info for debugging (optional)
 with st.expander("ℹ️ App Information"):
     st.write(f"**Selected Model**: {selected_model}")
     st.write(f"**Models Loaded**: {list(models.keys())}")
-    st.write(f"**Data Shape**: {X_test_prepared.shape if 'X_test_prepared' in locals() else 'No data loaded'}")
+    if 'X_test_clean' in locals():
+        st.write(f"**Data Shape**: {X_test_clean.shape}")
+    else:
+        st.write(f"**Data Shape**: No data loaded")
     st.write(f"**Expected Features**: {len(expected_features)} features")
