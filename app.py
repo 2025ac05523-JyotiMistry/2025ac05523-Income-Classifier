@@ -12,10 +12,10 @@ st.set_page_config(page_title="Income Classifier", layout="wide")
 st.title("💰 Income Classifier")
 
 st.markdown("This app predicts whether an individual's income exceeds $50,000 using 5 ML models.")
-
 @st.cache_resource
 def load_models():
     models = {}
+
     model_files = {
         'Logistic Regression': 'models/model_logistic_regression.pkl',
         'Decision Tree': 'models/model_decision_tree.pkl',
@@ -23,26 +23,38 @@ def load_models():
         'Naive Bayes': 'models/model_naive_bayes.pkl',
         'Random Forest': 'models/model_random_forest.pkl'
     }
-    
+
+    # Load all models
     for name, path in model_files.items():
         try:
             with open(path, 'rb') as f:
                 models[name] = pickle.load(f)
-            print(f"Loaded {name}")
+
         except FileNotFoundError:
             st.error(f"❌ File not found: {path}")
             return None, None
+
         except Exception as e:
             st.error(f"❌ Error loading {name}: {str(e)}")
             return None, None
-    
+
+    # Load preprocessor
     try:
         with open('models/preprocessor.pkl', 'rb') as f:
-            preprocessor = pickle.load(f)
+            preprocessor_data = pickle.load(f)
+
+        # preprocessor.pkl was saved as a dictionary
+        if isinstance(preprocessor_data, dict):
+            preprocessor = preprocessor_data['preprocessor']
+            expected_columns = preprocessor_data['expected_columns']
+        else:
+            preprocessor = preprocessor_data
+            expected_columns = None
+
     except Exception as e:
         st.error(f"❌ Error loading preprocessor: {str(e)}")
         return None, None
-    
+
     return models, preprocessor
 
 models, preprocessor = load_models()
@@ -81,6 +93,38 @@ if uploaded_file is not None:
                 model = models[selected_model]
                 
                 # Transform using preprocessor
+                # Expected input columns
+                expected_columns = [
+                    'age',
+                    'workclass',
+                    'fnlwgt',
+                    'education',
+                    'education-num',
+                    'marital-status',
+                    'occupation',
+                    'relationship',
+                    'race',
+                    'sex',
+                    'capital-gain',
+                    'capital-loss',
+                    'hours-per-week',
+                    'native-country'
+                ]
+
+                # Check columns
+                missing_columns = [
+                    col for col in expected_columns
+                    if col not in X_test.columns
+                ]
+
+                if missing_columns:
+                    st.error(f"❌ Missing columns: {missing_columns}")
+                    st.stop()
+
+                # Keep columns in the exact training order
+                X_test = X_test[expected_columns]
+
+                # Transform using the saved preprocessor
                 X_test_processed = preprocessor.transform(X_test)
                 
                 # Make predictions
