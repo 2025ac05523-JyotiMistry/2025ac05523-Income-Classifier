@@ -1,6 +1,8 @@
-# Income Classification App
-# Streamlit Application for ML Assignment 2
+# %% [markdown]
+# # Income Classification App
+# ## Streamlit Application for ML Assignment 2
 
+# %%
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -11,6 +13,7 @@ from sklearn.metrics import (accuracy_score, roc_auc_score, precision_score,
                             recall_score, f1_score, matthews_corrcoef,
                             confusion_matrix, roc_curve)
 import os
+import re
 
 # Set page configuration
 st.set_page_config(
@@ -53,7 +56,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 1. Title and Description
+# %% [markdown]
+# ## 1. Title and Description
+
+# %%
 # App title and description
 st.markdown('<p class="main-header">💰 Income Classifier</p>', unsafe_allow_html=True)
 
@@ -64,7 +70,83 @@ annual income exceeds $50,000 based on demographic and employment-related featur
 **Dataset**: Adult Census Income Dataset (UCI)
 """)
 
-# 2. Helper Functions
+# %% [markdown]
+# ## 2. Helper Functions
+
+# %%
+# Function to fix column names
+def fix_column_names(df):
+    """
+    Fix column names to match the expected format
+    """
+    # Define mapping for common column name variations
+    column_mapping = {
+        'education.num': 'education-num',
+        'education-num': 'education-num',
+        'marital.status': 'marital-status',
+        'marital-status': 'marital-status',
+        'capital.gain': 'capital-gain',
+        'capital-gain': 'capital-gain',
+        'capital.loss': 'capital-loss',
+        'capital-loss': 'capital-loss',
+        'hours.per.week': 'hours-per-week',
+        'hours-per-week': 'hours-per-week',
+        'native.count': 'native-country',
+        'native-country': 'native-country',
+        'workplace': 'workclass',  # Fix typo in your data
+        'workclass': 'workclass'
+    }
+    
+    # Create a copy to avoid modifying the original
+    df_fixed = df.copy()
+    
+    # Rename columns
+    for old_name, new_name in column_mapping.items():
+        if old_name in df_fixed.columns:
+            df_fixed = df_fixed.rename(columns={old_name: new_name})
+    
+    return df_fixed
+
+# Function to validate and prepare data
+def prepare_data(df, expected_columns):
+    """
+    Prepare data for prediction by ensuring all expected columns are present
+    """
+    # Fix column names
+    df_fixed = fix_column_names(df)
+    
+    # Check for missing columns
+    missing_columns = set(expected_columns) - set(df_fixed.columns)
+    
+    if missing_columns:
+        st.warning(f"⚠️ Missing columns: {missing_columns}")
+        st.info("Attempting to fix column issues...")
+        
+        # Try to find alternative column names
+        for col in missing_columns:
+            # Look for similar column names
+            for existing_col in df_fixed.columns:
+                # Check if columns are similar (ignoring case, spaces, special characters)
+                if col.replace('-', '').replace('_', '').lower() in existing_col.replace('-', '').replace('_', '').lower():
+                    df_fixed = df_fixed.rename(columns={existing_col: col})
+                    break
+        
+        # If still missing, add placeholder columns with default values
+        missing_columns = set(expected_columns) - set(df_fixed.columns)
+        if missing_columns:
+            st.warning(f"Adding missing columns with default values: {missing_columns}")
+            for col in missing_columns:
+                df_fixed[col] = 0
+    
+    # Ensure all expected columns are present
+    for col in expected_columns:
+        if col not in df_fixed.columns:
+            df_fixed[col] = 0
+    
+    # Select only the expected columns in the correct order
+    df_final = df_fixed[expected_columns]
+    
+    return df_final
 
 # Function to load models
 @st.cache_resource
@@ -148,8 +230,10 @@ def calculate_metrics(y_true, y_pred, y_pred_proba):
     
     return metrics
 
-# 3. Load Models
+# %% [markdown]
+# ## 3. Load Models
 
+# %%
 # Load models and preprocessor
 with st.spinner("Loading models..."):
     models, preprocessor = load_models()
@@ -159,6 +243,13 @@ if models is None or preprocessor is None:
     st.stop()
 
 st.success("✅ Models loaded successfully!")
+
+# Get expected feature names
+expected_features = [
+    'age', 'workclass', 'fnlwgt', 'education', 'education-num',
+    'marital-status', 'occupation', 'relationship', 'race', 'sex',
+    'capital-gain', 'capital-loss', 'hours-per-week', 'native-country'
+]
 
 # Display available models
 st.sidebar.header("📊 Model Selection")
@@ -173,7 +264,10 @@ st.sidebar.info(
     "but Logistic Regression is more interpretable."
 )
 
-# 4. Data Upload Section
+# %% [markdown]
+# ## 4. Data Upload Section
+
+# %%
 st.header("📁 Upload Test Data")
 
 uploaded_file = st.file_uploader(
@@ -185,7 +279,10 @@ uploaded_file = st.file_uploader(
 # Option to use sample data
 use_sample = st.checkbox("Use sample test data (test_data.csv)")
 
-# 5. Process Uploaded Data
+# %% [markdown]
+# ## 5. Process Uploaded Data
+
+# %%
 # Initialize session state for data
 if 'test_data' not in st.session_state:
     st.session_state.test_data = None
@@ -195,15 +292,25 @@ if 'predictions' not in st.session_state:
 # Load data
 if uploaded_file is not None:
     try:
-        test_data = pd.read_csv(uploaded_file)
+        test_data_raw = pd.read_csv(uploaded_file)
+        # Fix column names before storing
+        test_data = fix_column_names(test_data_raw)
         st.session_state.test_data = test_data
         st.success(f"✅ Data loaded successfully! Shape: {test_data.shape}")
+        
+        # Show column mapping if changes were made
+        if list(test_data_raw.columns) != list(test_data.columns):
+            st.info("🔄 Column names were automatically fixed:")
+            for old, new in zip(test_data_raw.columns, test_data.columns):
+                if old != new:
+                    st.write(f"  • `{old}` → `{new}`")
     except Exception as e:
         st.error(f"❌ Error loading file: {str(e)}")
         st.stop()
 elif use_sample:
     try:
-        test_data = pd.read_csv('test_data.csv')
+        test_data_raw = pd.read_csv('test_data.csv')
+        test_data = fix_column_names(test_data_raw)
         st.session_state.test_data = test_data
         st.success(f"✅ Sample data loaded successfully! Shape: {test_data.shape}")
     except FileNotFoundError:
@@ -219,31 +326,46 @@ else:
 # Display data preview
 with st.expander("📊 View Data Preview"):
     st.dataframe(test_data.head())
-    st.write(f"**Total rows**: {len(test_data)}")
-    st.write(f"**Total columns**: {len(test_data.columns)}")
+    st.write(f"**Total rows:** {len(test_data)}")
+    st.write(f"**Total columns:** {len(test_data.columns)}")
+    st.write("**Column names:**", ", ".join(test_data.columns))
 
-# 6. Feature Selection for Prediction
+# %% [markdown]
+# ## 6. Feature Selection for Prediction
+
+# %%
 st.header("🔍 Predict Income")
 
-# Separate features and target (if available)
-if 'income' in test_data.columns:
-    X_test = test_data.drop('income', axis=1)
-    y_test = test_data['income']
-    st.info(f"Target column 'income' found. Will evaluate model performance.")
-else:
-    X_test = test_data
-    y_test = None
-    st.info("No target column found. Will make predictions only.")
+# Prepare data for prediction
+try:
+    # Prepare the data with the expected columns
+    X_test_prepared = prepare_data(test_data, expected_features)
+    st.success(f"✅ Data prepared successfully! Shape: {X_test_prepared.shape}")
+    
+    # Check if target column exists
+    if 'income' in test_data.columns:
+        y_test = test_data['income']
+        st.info(f"✅ Target column 'income' found. Will evaluate model performance.")
+    else:
+        y_test = None
+        st.info("ℹ️ No target column found. Will make predictions only.")
+    
+    # Display feature info
+    st.subheader("Features Summary")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(f"**Number of features:** {X_test_prepared.shape[1]}")
+    with col2:
+        st.write(f"**Feature names:** {', '.join(X_test_prepared.columns[:5])}...")
+    
+except Exception as e:
+    st.error(f"❌ Error preparing data: {str(e)}")
+    st.stop()
 
-# Display feature info
-st.subheader("Features Summary")
-col1, col2 = st.columns(2)
-with col1:
-    st.write(f"**Number of features**: {X_test.shape[1]}")
-with col2:
-    st.write(f"**Feature names**: {', '.join(X_test.columns[:5])}...")
+# %% [markdown]
+# ## 7. Make Predictions
 
-# 7. Make Predictions
+# %%
 # Prediction button
 if st.button("🚀 Make Predictions"):
     try:
@@ -251,7 +373,7 @@ if st.button("🚀 Make Predictions"):
         model = models[selected_model]
         
         # Make predictions
-        y_pred, y_pred_proba = predict_income(model, preprocessor, X_test)
+        y_pred, y_pred_proba = predict_income(model, preprocessor, X_test_prepared)
         
         if y_pred is not None:
             st.session_state.predictions = {
@@ -290,76 +412,66 @@ if st.button("🚀 Make Predictions"):
                 file_name="predictions.csv",
                 mime="text/csv"
             )
+            
+            # If ground truth available, evaluate performance
+            if y_test is not None:
+                st.header("📊 Model Performance Evaluation")
+                
+                # Calculate metrics
+                metrics = calculate_metrics(y_test, y_pred, y_pred_proba)
+                
+                # Display metrics in columns
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Accuracy", f"{metrics['Accuracy']:.4f}")
+                    st.metric("Precision", f"{metrics['Precision']:.4f}")
+                with col2:
+                    st.metric("Recall", f"{metrics['Recall']:.4f}")
+                    st.metric("F1 Score", f"{metrics['F1 Score']:.4f}")
+                with col3:
+                    st.metric("MCC", f"{metrics['MCC']:.4f}")
+                    if 'AUC' in metrics:
+                        st.metric("AUC", f"{metrics['AUC']:.4f}")
+                
+                # Confusion Matrix
+                st.subheader("Confusion Matrix")
+                cm = confusion_matrix(y_test, y_pred)
+                fig, ax = plt.subplots(figsize=(8, 6))
+                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
+                            xticklabels=['<=50K', '>50K'],
+                            yticklabels=['<=50K', '>50K'])
+                ax.set_title(f'Confusion Matrix - {selected_model}')
+                ax.set_xlabel('Predicted')
+                ax.set_ylabel('Actual')
+                st.pyplot(fig)
+                plt.close()
+                
+                # ROC Curve
+                if y_pred_proba is not None:
+                    st.subheader("ROC Curve")
+                    fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+                    auc_score = metrics.get('AUC', 0)
+                    
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    ax.plot(fpr, tpr, label=f'{selected_model} (AUC = {auc_score:.3f})')
+                    ax.plot([0, 1], [0, 1], 'k--', label='Random Classifier')
+                    ax.set_xlabel('False Positive Rate')
+                    ax.set_ylabel('True Positive Rate')
+                    ax.set_title(f'ROC Curve - {selected_model}')
+                    ax.legend()
+                    ax.grid(alpha=0.3)
+                    st.pyplot(fig)
+                    plt.close()
     except Exception as e:
         st.error(f"❌ Error making predictions: {str(e)}")
+        st.write("Debug information:")
+        st.write(f"Data shape: {X_test_prepared.shape}")
+        st.write(f"Data columns: {X_test_prepared.columns.tolist()}")
 
-# 8. Model Evaluation 
-# Evaluate model performance if ground truth is available
-if y_test is not None and st.session_state.predictions is not None:
-    st.header("📊 Model Performance Evaluation")
-    
-    y_pred = st.session_state.predictions['y_pred']
-    y_pred_proba = st.session_state.predictions['y_pred_proba']
-    
-    # Calculate metrics
-    metrics = calculate_metrics(y_test, y_pred, y_pred_proba)
-    
-    # Display metrics in columns
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Accuracy", f"{metrics['Accuracy']:.4f}")
-        st.metric("Precision", f"{metrics['Precision']:.4f}")
-    with col2:
-        st.metric("Recall", f"{metrics['Recall']:.4f}")
-        st.metric("F1 Score", f"{metrics['F1 Score']:.4f}")
-    with col3:
-        st.metric("MCC", f"{metrics['MCC']:.4f}")
-        if 'AUC' in metrics:
-            st.metric("AUC", f"{metrics['AUC']:.4f}")
-    
-    # Display comparison with table
-    st.subheader("📋 Full Results")
-    
-    # Create results table
-    results_table = pd.DataFrame({
-        'Metric': list(metrics.keys()),
-        'Value': list(metrics.values())
-    })
-    results_table = results_table.round(4)
-    st.table(results_table)
-    
-    # 9. Visualizations
-    # Confusion Matrix
-    st.subheader("Confusion Matrix")
-    
-    cm = confusion_matrix(y_test, y_pred)
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
-                xticklabels=['<=50K', '>50K'],
-                yticklabels=['<=50K', '>50K'])
-    ax.set_title(f'Confusion Matrix - {selected_model}')
-    ax.set_xlabel('Predicted')
-    ax.set_ylabel('Actual')
-    st.pyplot(fig)
-    plt.close()
-    
-    # ROC Curve
-    if y_pred_proba is not None:
-        st.subheader("ROC Curve")
-        fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
-        auc_score = metrics.get('AUC', 0)
-        
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.plot(fpr, tpr, label=f'{selected_model} (AUC = {auc_score:.3f})')
-        ax.plot([0, 1], [0, 1], 'k--', label='Random Classifier')
-        ax.set_xlabel('False Positive Rate')
-        ax.set_ylabel('True Positive Rate')
-        ax.set_title(f'ROC Curve - {selected_model}')
-        ax.legend()
-        ax.grid(alpha=0.3)
-        st.pyplot(fig)
-        plt.close()
+# %% [markdown]
+# ## 8. Model Comparison (if available)
 
+# %%
 # Display comparison with all models if ground truth is available
 if y_test is not None and st.session_state.predictions is not None:
     st.header("📊 Model Comparison")
@@ -367,70 +479,76 @@ if y_test is not None and st.session_state.predictions is not None:
     if st.button("Compare All Models"):
         all_metrics = []
         
-        for model_name, model in models.items():
-            try:
-                # Make predictions
-                y_pred_all, y_pred_proba_all = predict_income(model, preprocessor, X_test)
+        with st.spinner("Comparing all models..."):
+            for model_name, model in models.items():
+                try:
+                    # Make predictions
+                    y_pred_all, y_pred_proba_all = predict_income(model, preprocessor, X_test_prepared)
+                    
+                    if y_pred_all is not None:
+                        # Calculate metrics
+                        metrics_all = calculate_metrics(y_test, y_pred_all, y_pred_proba_all)
+                        metrics_all['Model'] = model_name
+                        all_metrics.append(metrics_all)
+                except Exception as e:
+                    st.warning(f"Could not evaluate {model_name}: {str(e)}")
+                    continue
+            
+            if all_metrics:
+                # Create comparison dataframe
+                comparison_df = pd.DataFrame(all_metrics)
+                comparison_df = comparison_df.round(4)
                 
-                if y_pred_all is not None:
-                    # Calculate metrics
-                    metrics_all = calculate_metrics(y_test, y_pred_all, y_pred_proba_all)
-                    metrics_all['Model'] = model_name
-                    all_metrics.append(metrics_all)
-            except:
-                continue
-        
-        if all_metrics:
-            # Create comparison dataframe
-            comparison_df = pd.DataFrame(all_metrics)
-            comparison_df = comparison_df.round(4)
-            
-            # Display comparison table
-            st.subheader("Comparison Table")
-            st.dataframe(comparison_df)
-            
-            # Visualize comparison
-            st.subheader("Visual Comparison")
-            
-            # Select metrics to plot
-            metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1 Score', 'MCC']
-            if 'AUC' in comparison_df.columns:
-                metrics_to_plot.append('AUC')
-            
-            # Create bar chart
-            fig, ax = plt.subplots(figsize=(12, 6))
-            comparison_df_melted = comparison_df.melt(id_vars=['Model'], 
-                                                      value_vars=metrics_to_plot,
-                                                      var_name='Metric', 
-                                                      value_name='Score')
-            
-            sns.barplot(data=comparison_df_melted, x='Model', y='Score', hue='Metric', ax=ax)
-            ax.set_title('Model Performance Comparison')
-            ax.set_ylim(0, 1)
-            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
-            
-            # Identify best model
-            best_model = comparison_df.loc[comparison_df['Accuracy'].idxmax()]
-            st.success(f"🏆 **Best performing model**: {best_model['Model']} with Accuracy = {best_model['Accuracy']:.4f}")
+                # Display comparison table
+                st.subheader("Comparison Table")
+                st.dataframe(comparison_df)
+                
+                # Visualize comparison
+                st.subheader("Visual Comparison")
+                
+                # Select metrics to plot
+                metrics_to_plot = ['Accuracy', 'Precision', 'Recall', 'F1 Score', 'MCC']
+                if 'AUC' in comparison_df.columns:
+                    metrics_to_plot.append('AUC')
+                
+                # Create bar chart
+                fig, ax = plt.subplots(figsize=(12, 6))
+                comparison_df_melted = comparison_df.melt(id_vars=['Model'], 
+                                                          value_vars=metrics_to_plot,
+                                                          var_name='Metric', 
+                                                          value_name='Score')
+                
+                sns.barplot(data=comparison_df_melted, x='Model', y='Score', hue='Metric', ax=ax)
+                ax.set_title('Model Performance Comparison')
+                ax.set_ylim(0, 1)
+                ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
+                
+                # Identify best model
+                best_model = comparison_df.loc[comparison_df['Accuracy'].idxmax()]
+                st.success(f"🏆 **Best performing model**: {best_model['Model']} with Accuracy = {best_model['Accuracy']:.4f}")
 
-# 11. Footer
+# %% [markdown]
+# ## 9. Footer
+
+# %%
 st.markdown("---")
 st.markdown(
     """
     <div style="text-align: center; color: #666; padding: 1rem;">
         <p>ML Assignment 2 - Income Classification</p>
-        <p>using Streamlit</p>
+        <p>Built with ❤️ using Streamlit</p>
     </div>
     """,
     unsafe_allow_html=True
 )
 
-# Display session state info for debugging
+# Display session state info for debugging (optional)
 with st.expander("ℹ️ App Information"):
     st.write(f"**Selected Model**: {selected_model}")
     st.write(f"**Models Loaded**: {list(models.keys())}")
-    st.write(f"**Data Shape**: {X_test.shape if X_test is not None else 'No data loaded'}")
+    st.write(f"**Data Shape**: {X_test_prepared.shape if 'X_test_prepared' in locals() else 'No data loaded'}")
+    st.write(f"**Expected Features**: {len(expected_features)} features")
