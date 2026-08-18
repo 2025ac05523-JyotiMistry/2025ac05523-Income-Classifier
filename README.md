@@ -13,7 +13,7 @@ classification problem where the target variable is `income` (`<=50K` or
 
 ## b. Dataset Description
 
--   **Source:** [Kaggle - Adult Census Income](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data)
+-   **Source:** [Adult Census Income](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data)
 -   **Original Dataset:** 48,842 instances with 15 columns
 -   **After Preprocessing:** 30,162 instances (removed rows with missing
     values marked as `?`)
@@ -47,74 +47,42 @@ View evaluation metrics - View the confusion matrix - View the ROC curve
 
 ## e. Models Used & Evaluation Metrics
 
-  -------------------------------------------------------------------------------
-  ML Model       Accuracy        AUC   Precision     Recall   F1 Score        MCC
-  Name                                                                 
-  ------------ ---------- ---------- ----------- ---------- ---------- ----------
-  Logistic         0.8543     0.9136      0.7502     0.6218     0.6800     0.5911
-  Regression                                                           
+The following five classification models were implemented on the same dataset.
 
-  Decision         0.8158     0.7537      0.6302     0.6298     0.6300     0.5075
-  Tree                                                                 
+| Model | Accuracy | AUC | Precision | Recall | F1 | MCC |
+|:--|--:|--:|--:|--:|--:|--:|
+| Logistic Regression | 0.8543 | 0.9136 | 0.7502 | 0.6218 | 0.6800 | 0.5911 |
+| Decision Tree | 0.8158 | 0.7537 | 0.6302 | 0.6298 | 0.6300 | 0.5075 |
+| KNN | 0.8341 | 0.8672 | 0.6832 | 0.6218 | 0.6511 | 0.5436 |
+| Naive Bayes | 0.6010 | 0.8300 | 0.3795 | 0.9487 | 0.5421 | 0.3876 |
+| Random Forest | **0.8556** | **0.9114** | **0.7467** | **0.6358** | **0.6868** | **0.5970** |
 
-  K-Nearest        0.8341     0.8672      0.6832     0.6218     0.6511     0.5436
-  Neighbors                                                            
+### Metric Definitions
 
-  Naive Bayes      0.6010     0.8300      0.3795     0.9487     0.5421     0.3876
+| Metric | Description |
+|:--|:--|
+| Accuracy | Percentage of correctly classified instances |
+| AUC | Measures the model's ability to distinguish between the two classes |
+| Precision | Proportion of predicted positive cases that are actually positive |
+| Recall | Proportion of actual positive cases correctly identified |
+| F1 Score | Harmonic mean of precision and recall |
+| MCC | Balanced measure of classification quality, especially useful for imbalanced data |
 
-  Random           0.8556     0.9114      0.7467     0.6358     0.6868     0.5970
-  Forest                                                               
-  -------------------------------------------------------------------------------
+## f. Observations on Model Performance
 
-## f. Observations on Model Performance
+| Model | Observation |
+|:--|:--|
+| **Logistic Regression** | Strong overall performance with **85.43% accuracy** and an excellent **AUC of 0.9136**. It provides a good balance between precision and recall. |
+| **Decision Tree** | Achieves **81.58% accuracy** with an **AUC of 0.7537**. Precision and recall are almost equal, indicating balanced classification performance. |
+| **KNN** | Provides **83.41% accuracy** and a good **AUC of 0.8672**. Its performance is reasonable but lower than Logistic Regression and Random Forest. |
+| **Naive Bayes** | Has the lowest **accuracy (60.10%)**, but the highest **recall (94.87%)**. Its low precision indicates a high number of false positives. |
+| **Random Forest** | Best overall performance with the highest **accuracy (85.56%)**, **F1 score (0.6868)**, and **MCC (0.5970)**. It also achieves an excellent **AUC of 0.9114**. |
 
-  -----------------------------------------------------------------------
-  ML Model Name                       Observation about Model Performance
-  ----------------------------------- -----------------------------------
-  Logistic Regression                 Strong overall performer with
-                                      85.43% accuracy and excellent AUC
-                                      of 0.9136. Shows a good balance
-                                      between precision (75.02%) and
-                                      recall (62.18%). MCC of 0.5911
-                                      indicates substantial correlation.
+### Overall Winner
 
-  Decision Tree                       Moderate performance with 81.58%
-                                      accuracy and the lowest AUC among
-                                      the models (0.7537). Shows balanced
-                                      precision (63.02%) and recall
-                                      (62.98%).
+**Random Forest** 🏆
 
-  K-Nearest Neighbors                 Reasonable performance with 83.41%
-                                      accuracy and strong AUC of 0.8672.
-                                      Precision is 68.32% and recall is
-                                      62.18%. Performance is sensitive to
-                                      feature scaling.
-
-  Naive Bayes                         Lowest overall accuracy at 60.10%.
-                                      It has the highest recall (94.87%)
-                                      but low precision (37.95%),
-                                      resulting in many false positives.
-
-  Random Forest                       Best overall performer with the
-                                      highest accuracy (85.56%), F1 score
-                                      (0.6868), and MCC (0.5970). It also
-                                      provides an excellent AUC of
-                                      0.9114.
-  -----------------------------------------------------------------------
-
-### Overall Winner for the Dataset: Random Forest 🏆
-
-Random Forest achieves the highest accuracy (85.56%), highest F1 score
-(0.6868), and highest MCC (0.5970), with an excellent AUC of 0.9114. The
-ensemble approach captures non-linear relationships and performs well on
-the dataset.
-
-### Key Insights
-
--   **Best Overall:** Random Forest
--   **Best for Interpretability:** Logistic Regression
--   **Best for Recall:** Naive Bayes
--   **Worst Performing by Accuracy:** Naive Bayes
+Random Forest is the overall best-performing model for this dataset because it achieves the highest accuracy, F1 score, and MCC while maintaining a strong AUC.
 
 ## g. How to Run the App
 
