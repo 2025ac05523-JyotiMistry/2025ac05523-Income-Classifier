@@ -481,4 +481,4 @@ else:
 
 # Footer
 st.markdown("---")
-st.markdown("Made with ❤️ for ML Assignment 2 - BITS Pilani")
+st.markdown("ML Assignment 2 - BITS Pilani")
